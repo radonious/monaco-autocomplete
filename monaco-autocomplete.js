@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
  *  Monaco Autocomplete for Algorithmic Tasks
+ *  Version: 1.0.0
  *
  *  Contents:
  *    1. Keywords                       KEYWORDS
@@ -21,15 +22,54 @@
      * 8. Entry point (bootstrap)
      * ═══════════════════════════════════════════════════════════════════ */
 
+    const VERSION = '1.0.0';
+
+    /* ── Toast notification ── */
+    function notify(text, color = '#4caf50', duration = 2000) {
+        // Remove previous toast if any
+        const prev = document.getElementById('__ac_toast');
+        if (prev) prev.remove();
+
+        const el = document.createElement('div');
+        el.id = '__ac_toast';
+        el.textContent = text;
+        Object.assign(el.style, {
+            position: 'fixed',
+            right: '16px',
+            bottom: '16px',
+            zIndex: '99999',
+            padding: '8px 14px',
+            borderRadius: '6px',
+            background: color,
+            color: '#fff',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: '13px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+            opacity: '0',
+            transition: 'opacity 150ms ease-in-out',
+            pointerEvents: 'none'
+        });
+
+        document.body.appendChild(el);
+
+        // Fade in
+        requestAnimationFrame(() => { el.style.opacity = '1'; });
+
+        setTimeout(() => {
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 150);
+        }, duration);
+    }
+    
     const M = window.monaco;
-    if (!M || !M.editor) return alert('Monaco Editor not found on page.');
+    if (!M || !M.editor) { notify('Monaco Editor not found on page.', '#e53935'); return; }
 
     const editors = M.editor.getEditors();
-    if (!editors?.length) return alert('No open editors.');
+    if (!editors?.length) { notify('No open editors.', '#e53935'); return; }
 
     const editor = editors.find(e => e.hasTextFocus?.()) || editors[0];
     const model = editor.getModel();
-    if (!model) return;
+    if (!model) { notify('Editor has no model.', '#e53935'); return; }
 
     if (Array.isArray(window.__acDisposables)) {
         window.__acDisposables.forEach(d => { try { d.dispose(); } catch (_) { } });
@@ -211,6 +251,29 @@
     const KOTLIN_EXPLICIT_RE = /\b(?:val|var)\s+([a-zA-Z_]\w*)\s*:\s*([A-Z][\w<>, ]*?)(?=\s*[=\n;]|$)/g;
     const KOTLIN_IMPLICIT_RE = /\b(?:val|var)\s+([a-zA-Z_]\w*)\s*=\s*([^\n;]+)/g;
 
+    /* Kotlin function signature: fun name(params) — captures the parameter list */
+    const KOTLIN_FUN_RE = /\bfun\s+(?:[\w<>,.\[\]?]+\.)?\w+\s*\(((?:[^()]|\([^()]*\))*)\)/g;
+
+    /* Split by separator at the top nesting level (respects <>, (), []) */
+    function splitTopLevel(str, sep) {
+        const parts = [];
+        let depth = 0;
+        let current = '';
+        for (let i = 0; i < str.length; i++) {
+            const ch = str[i];
+            if (ch === '<' || ch === '(' || ch === '[') depth++;
+            else if (ch === '>' || ch === ')' || ch === ']') depth--;
+            if (ch === sep && depth === 0) {
+                parts.push(current);
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+        if (current.length) parts.push(current);
+        return parts;
+    }
+
     function inferKotlinType(expr) {
         const e = expr.trim();
 
@@ -266,9 +329,10 @@
             while ((m = JAVA_DECL_RE.exec(text)) !== null) {
                 const baseType = m[1];
                 const isArray = m[2] && m[2].length > 0;
-                const name = m[3];
-                map.set(name, isArray ? baseType + '[]' : baseType);
+                map.set(m[3], isArray ? baseType + '[]' : baseType);
             }
+            /* Java parameters are already covered by JAVA_DECL_RE —
+               it has no trailing lookahead and matches `Type name` in `(...)` as well. */
         } else if (lang === 'kotlin') {
             for (const m of text.matchAll(KOTLIN_EXPLICIT_RE)) {
                 map.set(m[1], m[2].split('<')[0].trim());
@@ -278,6 +342,22 @@
                 if (map.has(name)) continue;
                 const inferred = inferKotlinType(m[2]);
                 if (inferred) map.set(name, inferred);
+            }
+            /* Function parameters: fun name(a: T, b: U) */
+            for (const m of text.matchAll(KOTLIN_FUN_RE)) {
+                const params = splitTopLevel(m[1], ',');
+                for (const raw of params) {
+                    let part = raw.trim();
+                    if (!part) continue;
+                    part = part.replace(/^vararg\s+/, '');
+                    part = part.replace(/\s*=\s*[\s\S]*$/, '');   // strip default value
+                    const pm = part.match(/^([a-zA-Z_]\w*)\s*:\s*(.+)$/);
+                    if (!pm) continue;
+                    const name = pm[1];
+                    if (map.has(name)) continue;
+                    const baseType = pm[2].split('<')[0].trim();
+                    map.set(name, baseType);
+                }
             }
         }
 
@@ -1183,6 +1263,7 @@
         editor.trigger('keyboard', 'editor.action.quickFix', {});
     });
 
-    console.log('%c✅ Autocomplete activated',
+    notify('Autocomplete v' + VERSION + ' activated');
+    console.log('%c✅ Autocomplete v' + VERSION + ' activated',
         'color:#4caf50;font-weight:bold');
 })();
