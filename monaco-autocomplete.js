@@ -1167,6 +1167,44 @@
 
             const line = model.getLineContent(position.lineNumber);
             const textBefore = line.substring(0, position.column - 1);
+
+            /* Kotlin: colon-context handling.
+               Two cases:
+                 a) identifier/paren/bracket/quote before ':'  → type position, show types
+                 b) bare ':' at line start (nothing meaningful before) → suppress all suggestions
+               Anything else (e.g. `?:` Elvis) falls through to the general list. */
+            if (lang === 'kotlin') {
+                if (/[\w)\]"'`]\s*:\s*\w*$/.test(textBefore)) {
+                    const suggestions = [];
+
+                    (TYPES[lang] || []).forEach(t => suggestions.push({
+                        label: t,
+                        kind: K.Class,
+                        detail: 'type',
+                        insertText: t,
+                        range,
+                        sortText: '1_' + t
+                    }));
+
+                    getIdentifiers(model).forEach(id => {
+                        if (id.kind === 'Class') {
+                            suggestions.push({
+                                label: id.name,
+                                kind: K.Class,
+                                insertText: id.name,
+                                range,
+                                sortText: '2_' + id.name
+                            });
+                        }
+                    });
+
+                    return { suggestions };
+                }
+                if (/^\s*:\s*\w*$/.test(textBefore)) {
+                    return { suggestions: [] };
+                }
+            }
+
             const lastDot = textBefore.lastIndexOf('.');
             const isAfterDot =
                 lastDot >= 0 &&
