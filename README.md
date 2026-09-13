@@ -10,6 +10,7 @@ Provides snippet suggestions, standard types, keywords, and in-document identifi
 - **Standard types** — boxed primitives, collections, I/O classes
 - **Keywords** — language keywords for Java and Kotlin
 - **In-document identifiers** — auto-extracted classes, methods, fields, variables with proper icons
+- **Type-aware suggestions** — after `arr.` you get only array methods
 - **Hotkeys** — `Ctrl+Space` to trigger suggestions, `Tab` to accept
 
 ## Usage
@@ -32,7 +33,8 @@ The bookmarklet injects `monaco-autocomplete.js` via jsDelivr CDN. The script:
 
 1. Locates the active Monaco editor.
 2. Registers `CompletionItemProvider`s for `java` and `kotlin`.
-3. Updates editor options and binds hotkeys.
+3. Builds a type map from declarations in the current document.
+4. Updates editor options and binds hotkeys.
 
 Re-running the bookmarklet disposes previous providers via `window.__acDisposables` to prevent duplicates.
 
@@ -45,12 +47,39 @@ All data lives in the single `monaco-autocomplete.js` file, organized into numbe
 | 1 | Keywords |
 | 2 | Snippets |
 | 3 | Standard types |
-| 4 | Identifier extraction |
-| 5 | Completion provider |
-| 6 | Editor options and hotkeys |
-| 7 | Entry point |
+| 4 | Identifier extraction + type map |
+| 5 | Method table |
+| 6 | Completion provider |
+| 7 | Editor options and hotkeys |
+| 8 | Entry point |
 
-To customize, fork the repo, edit the arrays in sections 1–3, and update the bookmarklet URL with your GitHub username.
+To customize, fork the repo, edit the arrays in sections 1–5, and update the bookmarklet URL with your GitHub username.
+
+## Tools
+
+### Purge jsDelivr cache
+
+After pushing changes to GitHub, the CDN may keep serving the old version for some time. To force an update, use the official purge tool:
+
+- **Web UI:** https://www.jsdelivr.com/tools/purge — paste the full URL and click «Purge».
+- **API:** send a `POST` request to `https://purge.jsdelivr.net` with the file path.
+
+Alternatively, a GitHub Action can purge the cache automatically on every push to `main`.
+
+### Build a bookmarklet from source
+
+If you want to rebuild the bookmarklet URL from the raw script (for example, after changing the CDN or repository), use the online Bookmarklet Maker:
+
+- https://caiorss.github.io/bookmarklet-maker/
+
+Paste the script content, generate the encoded `javascript:...` URL, and save it as a bookmark.
+
+## Limitations
+
+- Chained calls (`list.get(0).`) fall back to identifier suggestions — the type is not inferred.
+- Custom classes only expose members declared in the current document.
+- Static access (`Math.`, `Arrays.`) requires the name to be present in the type map (i.e. assigned to a variable).
+- Cross-file type inference is not supported.
 
 ## License
 
