@@ -364,6 +364,66 @@
         return map;
     }
 
+    /* ── Class field extraction (user-defined classes: TreeNode, ListNode, etc.) ── */
+    const JAVA_CLASS_RE = /\bclass\s+(\w+)[^{]*\{([^}]*)\}/g;
+    const JAVA_FIELD_RE = /\b([A-Z]\w*|int|long|double|float|boolean|char|byte|short|String)\s+([a-z_$]\w*)\s*[=;]/g;
+
+    const KOTLIN_CLASS_RE = /\bclass\s+(\w+)\s*(?:\(([^)]*)\))?\s*\{([^}]*)\}/g;
+    const KOTLIN_FIELD_RE = /\b(?:val|var)\s+(`[^`]+`|[a-zA-Z_]\w*)\s*:\s*([A-Z][\w]*)/g;
+
+    function buildClassFieldMap(text, lang) {
+        const map = new Map();
+
+        if (lang === 'java') {
+            JAVA_CLASS_RE.lastIndex = 0;
+            let cm;
+            while ((cm = JAVA_CLASS_RE.exec(text)) !== null) {
+                const className = cm[1];
+                const body = cm[2];
+                const fields = new Map();
+                JAVA_FIELD_RE.lastIndex = 0;
+                let fm;
+                while ((fm = JAVA_FIELD_RE.exec(body)) !== null) {
+                    fields.set(fm[2], fm[1]);
+                }
+                if (fields.size) map.set(className, fields);
+            }
+        } else if (lang === 'kotlin') {
+            for (const cm of text.matchAll(KOTLIN_CLASS_RE)) {
+                const className = cm[1];
+                const ctorParams = cm[2] || '';
+                const body = cm[3] || '';
+                const fields = new Map();
+
+                // Primary constructor: class Foo(val x: Int, var y: String)
+                for (const pm of ctorParams.matchAll(KOTLIN_FIELD_RE)) {
+                    fields.set(pm[1].replace(/`/g, ''), pm[2]);
+                }
+                // Body properties: var x: Type = ...
+                for (const fm of body.matchAll(KOTLIN_FIELD_RE)) {
+                    fields.set(fm[1].replace(/`/g, ''), fm[2]);
+                }
+
+                if (fields.size) map.set(className, fields);
+            }
+        }
+
+        return map;
+    }
+
+    let classCache = { uri: '', text: '', lang: '', map: new Map() };
+
+    function getClassFieldMap(model) {
+        const uri = model.uri.toString();
+        const text = model.getValue();
+        const lang = model.getLanguageId();
+        if (classCache.uri === uri && classCache.text === text && classCache.lang === lang) {
+            return classCache.map;
+        }
+        classCache = { uri, text, lang, map: buildClassFieldMap(text, lang) };
+        return classCache.map;
+    }
+
     const TYPE_ALIASES = {
         'ArrayList': 'List',
         'LinkedList': 'List',
@@ -1114,22 +1174,55 @@
 
             if (isAfterDot) {
                 const beforeLastDot = textBefore.substring(0, lastDot);
-                const m = beforeLastDot.match(/([a-zA-Z_$][\w$]*)$/);
-                const varName = m ? m[1] : null;
+                // Match full identifier chain: foo.bar.baz or foo?.bar
+                const chainMatch = beforeLastDot.match(
+                    /([a-zA-Z_$][\w$]*(?:\??\.[a-zA-Z_$][\w$]*)*)$/
+                );
+                const chain = chainMatch ? chainMatch[1].split(/\??\./) : [];
 
-                if (varName) {
+                if (chain.length) {
                     const typeMap = getTypeMap(model);
-                    const declared = typeMap.get(varName);
-                    const normalized = normalizeType(declared);
-                    const methods = normalized ? METHODS[normalized] : null;
+                    const classFields = getClassFieldMap(model);
 
-                    if (methods && methods.length) {
-                        return {
-                            suggestions: methods.map(x => methodSuggestion(x, range, normalized))
-                        };
+                    // Resolve the type of the first identifier
+                    let currentType = typeMap.get(chain[0]);
+
+                    // Walk the remaining chain segments
+                    for (let i = 1; i < chain.length && currentType; i++) {
+                        const baseType = currentType.split('<')[0].trim();
+                        const fields = classFields.get(baseType);
+                        currentType = fields ? fields.get(chain[i]) : null;
+                    }
+
+                    if (currentType) {
+                        const normalized = normalizeType(currentType);
+
+                        // 1. Known stdlib type → method table
+                        const methods = METHODS[normalized];
+                        if (methods && methods.length) {
+                            return {
+                                suggestions: methods.map(x => methodSuggestion(x, range, normalized))
+                            };
+                        }
+
+                        // 2. User-defined class → list its fields
+                        const fields = classFields.get(normalized);
+                        if (fields && fields.size) {
+                            return {
+                                suggestions: [...fields.entries()].map(([name, type]) => ({
+                                    label: name,
+                                    kind: K.Field,
+                                    detail: type,
+                                    insertText: name,
+                                    range,
+                                    sortText: '1_' + name
+                                }))
+                            };
+                        }
                     }
                 }
 
+                // Fallback: identifiers from the document
                 return {
                     suggestions: getIdentifiers(model).map(id => ({
                         label: id.name,
