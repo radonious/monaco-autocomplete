@@ -1113,27 +1113,74 @@
      * ═══════════════════════════════════════════════════════════════════ */
 
     editor.updateOptions({
+        /* ── Suggestions ── */
         quickSuggestions: { other: true, comments: false, strings: false },
         suggestOnTriggerCharacters: true,
         tabCompletion: 'on',
         acceptSuggestionOnEnter: 'smart',
-        wordBasedSuggestions: true,
         snippetSuggestions: 'top',
+        wordBasedSuggestions: 'off',            // disable built-in word suggestions (we provide our own)
+        quickSuggestionsDelay: 10,
+        snippetsPreventQuickSuggestions: false,
+
         suggest: {
+            preview: true,
+            showStatusBar: true,
             showKeywords: true,
             showSnippets: true,
-            showWords: true,
+            showWords: false,                   // our identifier extractor replaces it
             showClasses: true,
             showMethods: true,
             showFunctions: true,
             showVariables: true,
             showFields: true,
             showProperties: true
-        }
+        },
+
+        parameterHints: { enabled: true },
+
+        /* ── Editing ── */
+        tabSize: 4,
+        insertSpaces: true,
+        autoClosingBrackets: 'languageDefined',
+        autoClosingQuotes: 'languageDefined',
+        autoSurround: 'languageDefined',
+        formatOnPaste: true,
+        formatOnType: true,
+        wordWrap: 'on',
+        wrappingIndent: 'indent',
+
+        /* ── Performance ── */
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+
+        /* ── Visual noise reduction ── */
+        links: false,
+        colorDecorators: false,
+        lightbulb: { enabled: 'off' },
+        codeLens: false,
+        occurrencesHighlight: 'singleFile'
     });
 
+    /* ── Hotkeys ── */
+    // Ctrl+Space / Cmd+Space — force open the suggestion widget
     editor.addCommand(M.KeyMod.CtrlCmd | M.KeyCode.Space, () => {
         editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+    });
+
+    // Ctrl+G — go to line
+    editor.addCommand(M.KeyMod.CtrlCmd | M.KeyCode.KeyG, () => {
+        editor.trigger('keyboard', 'editor.action.gotoLine', {});
+    });
+
+    // Ctrl+/ — toggle line comment
+    editor.addCommand(M.KeyMod.CtrlCmd | M.KeyCode.US_SLASH, () => {
+        editor.trigger('keyboard', 'editor.action.commentLine', {});
+    });
+
+    // Ctrl+. — quick fix (code actions)
+    editor.addCommand(M.KeyMod.CtrlCmd | M.KeyCode.US_DOT, () => {
+        editor.trigger('keyboard', 'editor.action.quickFix', {});
     });
 
     console.log('%c✅ Autocomplete activated',
