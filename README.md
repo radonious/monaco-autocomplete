@@ -4,6 +4,9 @@ Bookmarklet that adds autocomplete to Monaco Editor on web-based coding platform
 
 Provides snippet suggestions, standard types, keywords, and in-document identifier extraction for **Java** and **Kotlin**.
 
+<img width="250" alt="image" src="https://github.com/user-attachments/assets/5b8c1df6-9edb-4ff8-ba0a-33abe9f7a139" />
+
+
 ## Features
 
 - **Snippets** — input/output, data structures, arrays, loops, common patterns
